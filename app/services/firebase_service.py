@@ -6,7 +6,6 @@ from typing import Optional, List
 import httpx
 import base64
 import json
-import tempfile
 import os
 
 # Inicializar Firebase una sola vez
@@ -61,7 +60,6 @@ async def create_user(email: str, password: str, name: str) -> dict:
         "email": email,
         "created_at": datetime.utcnow().isoformat()
     })
-    # Generar token custom (el cliente debe canjearlo por ID token)
     custom_token = auth.create_custom_token(user.uid)
     return {"token": custom_token.decode(), "user_id": user.uid}
 
@@ -90,25 +88,62 @@ async def create_subject(user_id: str, name: str, professor_name: Optional[str] 
     doc_ref.set({
         "name": name,
         "professor_name": professor_name or "",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
+        "pdf_content": "",
+        "pdf_filename": "",
     })
     return doc_ref.id
 
 async def get_subjects(user_id: str) -> List[dict]:
     db = get_db()
     docs = db.collection("users").document(user_id).collection("subjects").stream()
-    return [{"id": doc.id, **doc.to_dict()} for doc in docs]
+    result = []
+    for doc in docs:
+        d = doc.to_dict()
+        # No enviar pdf_content al cliente (puede ser muy grande)
+        result.append({
+            "id": doc.id,
+            "name": d.get("name", ""),
+            "professor_name": d.get("professor_name", ""),
+            "created_at": d.get("created_at", ""),
+            "pdf_filename": d.get("pdf_filename", ""),
+        })
+    return result
 
 async def get_subject(subject_id: str, user_id: str) -> Optional[dict]:
     db = get_db()
     doc = db.collection("users").document(user_id).collection("subjects").document(subject_id).get()
     if doc.exists:
-        return {"id": doc.id, **doc.to_dict()}
+        d = doc.to_dict()
+        return {"id": doc.id, **d}
     return None
 
 async def delete_subject(subject_id: str, user_id: str):
     db = get_db()
     db.collection("users").document(user_id).collection("subjects").document(subject_id).delete()
+
+async def save_subject_pdf(
+    subject_id: str,
+    user_id: str,
+    pdf_text: str,
+    filename: str
+) -> None:
+    """Guarda el texto extraído del PDF en el documento de la materia."""
+    db = get_db()
+    db.collection("users").document(user_id).collection("subjects").document(subject_id).update({
+        "pdf_content": pdf_text,
+        "pdf_filename": filename,
+        "pdf_uploaded_at": datetime.utcnow().isoformat(),
+    })
+
+async def delete_subject_pdf(subject_id: str, user_id: str) -> None:
+    """Elimina el PDF de la materia."""
+    db = get_db()
+    db.collection("users").document(user_id).collection("subjects").document(subject_id).update({
+        "pdf_content": "",
+        "pdf_filename": "",
+        "pdf_uploaded_at": "",
+    })
 
 # ─── NOTES ───────────────────────────────────────────────────────────────────
 
@@ -122,6 +157,7 @@ async def save_note(
 ) -> str:
     db = get_db()
     doc_ref = db.collection("users").document(user_id).collection("notes").document()
+    created_at = datetime.utcnow().isoformat()
     doc_ref.set({
         "subject_id": subject_id,
         "subject_name": subject_name,
@@ -129,7 +165,7 @@ async def save_note(
         "structured_notes": structured_notes,
         "duration_seconds": duration,
         "qa_pairs": [],
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": created_at,
     })
     return doc_ref.id
 
