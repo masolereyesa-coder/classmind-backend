@@ -20,20 +20,32 @@ def _get_firebase_credentials():
         return credentials.Certificate(cred_dict)
     return credentials.Certificate(settings.firebase_credentials_path)
 
+def _initialize_firebase():
+    """Inicializa Firebase Admin SDK si no ha sido inicializado."""
+    if not firebase_admin._apps:
+        cred = _get_firebase_credentials()
+        firebase_admin.initialize_app(cred)
+
 def get_db():
     global _db
+    _initialize_firebase()
     if _db is None:
-        if not firebase_admin._apps:
-            cred = _get_firebase_credentials()
-            firebase_admin.initialize_app(cred)
         _db = firestore.client()
     return _db
+
+# Inicializar al importar el módulo
+try:
+    _initialize_firebase()
+except Exception as e:
+    import logging
+    logging.warning(f"Firebase init deferred: {e}")
 
 # ─── AUTH ────────────────────────────────────────────────────────────────────
 
 async def verify_token(token: str) -> Optional[str]:
     """Verifica un token de Firebase y retorna el user_id."""
     try:
+        _initialize_firebase()
         decoded = auth.verify_id_token(token)
         return decoded["uid"]
     except Exception:
@@ -41,6 +53,7 @@ async def verify_token(token: str) -> Optional[str]:
 
 async def create_user(email: str, password: str, name: str) -> dict:
     """Crea un usuario en Firebase Auth y guarda su perfil en Firestore."""
+    _initialize_firebase()
     user = auth.create_user(email=email, password=password, display_name=name)
     db = get_db()
     db.collection("users").document(user.uid).set({
