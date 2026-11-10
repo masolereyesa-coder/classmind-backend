@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: classmind-api
+    env: python
+    rootDir: .
+    buildCommand: pip install -r requirements_render.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: HUGGINGFACE_TOKEN
+        value: "not-used"
+      - key: FIREBASE_PROJECT_ID
+        value: classmind-bd49b
+      - key: FIREBASE_WEB_API_KEY
+        sync: false
+      - key: FIREBASE_CREDENTIALS_BASE64
+        sync: false
+      - key: WHISPER_MODEL
+        value: base
+      - key: SECRET_KEY
+        value: classmind-secret-key-2024

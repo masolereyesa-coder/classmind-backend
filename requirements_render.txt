@@ -1,0 +1,21 @@
+# requirements para Render.com (sin pyannote ni torch — demasiada RAM)
+fastapi==0.111.0
+uvicorn==0.30.1
+python-multipart==0.0.9
+python-dotenv==1.0.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+
+# Transcripción (modelo base ~150MB RAM — OK en Render free)
+faster-whisper==1.0.3
+
+# Firebase
+firebase-admin==6.5.0
+
+# Groq (notas IA + Q&A)
+groq==0.9.0
+
+# Utilidades
+httpx==0.27.0
+aiofiles==23.2.1
+numpy==1.26.4

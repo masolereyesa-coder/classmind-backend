@@ -1,0 +1,25 @@
+fastapi==0.111.0
+uvicorn==0.30.1
+python-multipart==0.0.9
+python-dotenv==1.0.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+
+# Transcripción
+faster-whisper==1.0.3
+
+# Diarización
+pyannote.audio==3.3.1
+torch==2.3.1
+torchaudio==2.3.1
+
+# Firebase
+firebase-admin==6.5.0
+
+# Groq
+groq==0.9.0
+
+# Utilidades
+httpx==0.27.0
+aiofiles==23.2.1
+numpy==1.26.4
