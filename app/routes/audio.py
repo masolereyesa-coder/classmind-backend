@@ -21,15 +21,22 @@ async def process_audio(
     # Verificar token
     user_id = await verify_token(credentials.credentials)
     if not user_id:
-        raise HTTPException(status_code=401, detail="Token inválido")
+        raise HTTPException(status_code=401, detail="Token inválido o expirado. Vuelve a iniciar sesión.")
 
-    # Verificar que la materia existe (también trae pdf_content si tiene)
+    # Verificar que la materia existe
     subject = await get_subject(subject_id, user_id)
     if not subject:
         raise HTTPException(status_code=404, detail="Materia no encontrada")
 
-    # Guardar audio temporalmente
-    suffix = os.path.splitext(audio_file.filename)[1] if audio_file.filename else ".m4a"
+    # FIX: capturar nombre y content_type para determinar extensión correcta
+    original_filename = audio_file.filename or ""
+    content_type = audio_file.content_type or ""
+
+    # Guardar audio temporalmente con extensión correcta
+    suffix = os.path.splitext(original_filename)[1].lower() if original_filename else ""
+    if not suffix or suffix not in {'.flac', '.mp3', '.mp4', '.mpeg', '.mpga', '.m4a', '.ogg', '.wav', '.webm'}:
+        suffix = ".m4a"
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         while True:
             chunk = await audio_file.read(1024 * 1024)  # 1 MB por chunk
@@ -39,16 +46,20 @@ async def process_audio(
         tmp_path = tmp.name
 
     try:
-        # Transcribir
-        transcript, duration = await transcribe_audio(tmp_path)
+        # Transcribir (FIX: pasar filename y content_type)
+        transcript, duration = await transcribe_audio(
+            tmp_path,
+            original_filename=original_filename,
+            content_type=content_type
+        )
 
-        # Diarizar (en cloud retorna el mismo transcript)
+        # Diarizar
         diarized_text = await diarize_audio(tmp_path, transcript)
 
         # Obtener contenido del PDF si existe
         pdf_content = subject.get("pdf_content", "") or ""
 
-        # Generar notas estructuradas con IA (enriquecidas con PDF si hay)
+        # Generar notas estructuradas con IA
         structured_notes = await generate_notes(
             transcript=diarized_text,
             subject_name=subject["name"],
@@ -66,7 +77,6 @@ async def process_audio(
             duration=duration
         )
 
-        # Retornar todos los campos que Note.fromJson() espera
         return {
             "id": note_id,
             "subject_id": subject_id,
@@ -78,7 +88,8 @@ async def process_audio(
             "qa_pairs": [],
             "used_pdf": bool(pdf_content.strip()),
         }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
-        # Borrar audio (nunca se almacena)
         if os.path.exists(tmp_path):
             os.remove(tmp_path)

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from app.models import UserCreate, UserLogin, TokenResponse
-from app.services.firebase_service import create_user, login_user
+from app.models import UserCreate, UserLogin, TokenResponse, RefreshRequest
+from app.services.firebase_service import create_user, login_user, refresh_id_token
 
 router = APIRouter()
 
@@ -10,6 +10,7 @@ async def register(user: UserCreate):
         result = await create_user(user.email, user.password, user.name)
         return TokenResponse(
             token=result["token"],
+            refresh_token=result["refresh_token"],
             user_id=result["user_id"],
             email=user.email,
             name=user.name
@@ -23,9 +24,25 @@ async def login(credentials: UserLogin):
         result = await login_user(credentials.email, credentials.password)
         return TokenResponse(
             token=result["token"],
+            refresh_token=result["refresh_token"],   # FIX: incluir refresh token
             user_id=result["user_id"],
             email=credentials.email,
             name=result["name"]
         )
     except Exception as e:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(request: RefreshRequest):
+    """FIX: Renueva el ID token usando el refresh token."""
+    try:
+        result = await refresh_id_token(request.refresh_token)
+        return TokenResponse(
+            token=result["token"],
+            refresh_token=result["refresh_token"],
+            user_id=result["user_id"],
+            email="",
+            name=""
+        )
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Refresh token inválido")

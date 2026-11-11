@@ -50,21 +50,9 @@ async def verify_token(token: str) -> Optional[str]:
     except Exception:
         return None
 
-async def create_user(email: str, password: str, name: str) -> dict:
-    """Crea un usuario en Firebase Auth y guarda su perfil en Firestore."""
-    _initialize_firebase()
-    user = auth.create_user(email=email, password=password, display_name=name)
-    db = get_db()
-    db.collection("users").document(user.uid).set({
-        "name": name,
-        "email": email,
-        "created_at": datetime.utcnow().isoformat()
-    })
-    custom_token = auth.create_custom_token(user.uid)
-    return {"token": custom_token.decode(), "user_id": user.uid}
 
-async def login_user(email: str, password: str) -> dict:
-    """Login usando Firebase Auth REST API."""
+async def _firebase_login(email: str, password: str) -> dict:
+    """Login usando Firebase Auth REST API. Retorna idToken, refreshToken, etc."""
     api_key = settings.firebase_web_api_key
     async with httpx.AsyncClient() as client:
         response = await client.post(
@@ -73,11 +61,57 @@ async def login_user(email: str, password: str) -> dict:
         )
         if response.status_code != 200:
             raise Exception("Credenciales inválidas")
+        return response.json()
+
+
+async def create_user(email: str, password: str, name: str) -> dict:
+    """Crea usuario en Firebase Auth, guarda perfil en Firestore y retorna ID token real."""
+    _initialize_firebase()
+    user = auth.create_user(email=email, password=password, display_name=name)
+    db = get_db()
+    db.collection("users").document(user.uid).set({
+        "name": name,
+        "email": email,
+        "created_at": datetime.utcnow().isoformat()
+    })
+    # FIX: usar REST API para obtener ID token real (no custom token)
+    data = await _firebase_login(email, password)
+    return {
+        "token": data["idToken"],
+        "refresh_token": data["refreshToken"],
+        "user_id": data["localId"],
+        "name": data.get("displayName", name),
+        "email": email,
+    }
+
+
+async def login_user(email: str, password: str) -> dict:
+    """Login usando Firebase Auth REST API. Retorna ID token + refresh token."""
+    data = await _firebase_login(email, password)
+    return {
+        "token": data["idToken"],
+        "refresh_token": data["refreshToken"],   # FIX: incluir refresh token
+        "user_id": data["localId"],
+        "name": data.get("displayName", ""),
+        "email": email,
+    }
+
+
+async def refresh_id_token(refresh_token: str) -> dict:
+    """Renueva el ID token usando el refresh token."""
+    api_key = settings.firebase_web_api_key
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://securetoken.googleapis.com/v1/token?key={api_key}",
+            data={"grant_type": "refresh_token", "refresh_token": refresh_token}
+        )
+        if response.status_code != 200:
+            raise Exception("Refresh token inválido o expirado")
         data = response.json()
         return {
-            "token": data["idToken"],
-            "user_id": data["localId"],
-            "name": data.get("displayName", "")
+            "token": data["id_token"],
+            "refresh_token": data["refresh_token"],
+            "user_id": data["user_id"],
         }
 
 # ─── SUBJECTS ────────────────────────────────────────────────────────────────
@@ -100,7 +134,6 @@ async def get_subjects(user_id: str) -> List[dict]:
     result = []
     for doc in docs:
         d = doc.to_dict()
-        # No enviar pdf_content al cliente (puede ser muy grande)
         result.append({
             "id": doc.id,
             "name": d.get("name", ""),
@@ -122,13 +155,7 @@ async def delete_subject(subject_id: str, user_id: str):
     db = get_db()
     db.collection("users").document(user_id).collection("subjects").document(subject_id).delete()
 
-async def save_subject_pdf(
-    subject_id: str,
-    user_id: str,
-    pdf_text: str,
-    filename: str
-) -> None:
-    """Guarda el texto extraído del PDF en el documento de la materia."""
+async def save_subject_pdf(subject_id: str, user_id: str, pdf_text: str, filename: str) -> None:
     db = get_db()
     db.collection("users").document(user_id).collection("subjects").document(subject_id).update({
         "pdf_content": pdf_text,
@@ -137,7 +164,6 @@ async def save_subject_pdf(
     })
 
 async def delete_subject_pdf(subject_id: str, user_id: str) -> None:
-    """Elimina el PDF de la materia."""
     db = get_db()
     db.collection("users").document(user_id).collection("subjects").document(subject_id).update({
         "pdf_content": "",
@@ -147,14 +173,8 @@ async def delete_subject_pdf(subject_id: str, user_id: str) -> None:
 
 # ─── NOTES ───────────────────────────────────────────────────────────────────
 
-async def save_note(
-    user_id: str,
-    subject_id: str,
-    subject_name: str,
-    transcript: str,
-    structured_notes: str,
-    duration: int
-) -> str:
+async def save_note(user_id: str, subject_id: str, subject_name: str,
+                    transcript: str, structured_notes: str, duration: int) -> str:
     db = get_db()
     doc_ref = db.collection("users").document(user_id).collection("notes").document()
     created_at = datetime.utcnow().isoformat()
@@ -199,3 +219,11 @@ async def get_note(note_id: str, user_id: str) -> Optional[dict]:
 async def delete_note(note_id: str, user_id: str):
     db = get_db()
     db.collection("users").document(user_id).collection("notes").document(note_id).delete()
+
+async def update_note_content(note_id: str, user_id: str, structured_notes: str) -> None:
+    """FIX: Actualiza las notas estructuradas de una nota existente."""
+    db = get_db()
+    db.collection("users").document(user_id).collection("notes").document(note_id).update({
+        "structured_notes": structured_notes,
+        "edited_at": datetime.utcnow().isoformat(),
+    })

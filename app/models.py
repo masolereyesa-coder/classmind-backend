@@ -31,7 +31,7 @@ class AudioProcessRequest(BaseModel):
 class QARequest(BaseModel):
     question: str
     subject_id: str
-    user_id: str
+    user_id: Optional[str] = None  # FIX: extraído del token, no requerido
 
 class QAResponse(BaseModel):
     answer: str
@@ -51,3 +51,10 @@ class TokenResponse(BaseModel):
     user_id: str
     email: str
     name: str
+    refresh_token: Optional[str] = None  # FIX: para renovar tokens
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class NoteUpdateRequest(BaseModel):
+    structured_notes: str
