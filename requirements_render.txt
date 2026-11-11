@@ -7,7 +7,6 @@ pydantic==2.7.4
 pydantic-settings==2.3.4
 
 # Transcripción (modelo base ~150MB RAM — OK en Render free)
-faster-whisper==1.0.3
 
 # Firebase
 firebase-admin==6.5.0

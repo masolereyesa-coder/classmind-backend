@@ -31,8 +31,11 @@ async def process_audio(
     # Guardar audio temporalmente
     suffix = os.path.splitext(audio_file.filename)[1] if audio_file.filename else ".m4a"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await audio_file.read()
-        tmp.write(content)
+        while True:
+            chunk = await audio_file.read(1024 * 1024)  # 1 MB por chunk
+            if not chunk:
+                break
+            tmp.write(chunk)
         tmp_path = tmp.name
 
     try:
